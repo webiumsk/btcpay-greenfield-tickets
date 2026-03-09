@@ -1,0 +1,178 @@
+/* Satoshi Tickets WC Settings tab layout */
+.btcpay-satoshi-settings-content {
+    margin-top: 0;
+}
+
+.btcpay-satoshi-settings-content .btcpay-satoshi-subnav {
+    margin-bottom: 0;
+    padding-left: 0;
+}
+
+.btcpay-satoshi-tab-panel {
+    padding: 20px 24px 40px;
+    background: #fff;
+    margin-top: -1px;
+    border: 1px solid #c3c4c7;
+    border-top: none;
+    min-height: 200px;
+}
+
+.btcpay-satoshi-tab-panel .btcpay-satoshi-satflux-connect {
+    margin-bottom: 24px;
+    padding: 16px 20px;
+    border: 1px solid #c3c4c7;
+    background: #f6f7f7;
+    border-radius: 4px;
+    max-width: 100%;
+}
+
+.btcpay-satoshi-tab-panel .btcpay-satoshi-satflux-connect h3 {
+    margin: 0 0 8px;
+    padding: 0;
+    font-size: 14px;
+}
+
+.btcpay-satoshi-tab-panel .btcpay-satoshi-satflux-connect .description {
+    margin-bottom: 12px;
+}
+
+.btcpay-satoshi-tab-panel .btcpay-satoshi-satflux-connect p {
+    margin: 0 0 12px;
+}
+
+.btcpay-satoshi-tab-panel .btcpay-satoshi-satflux-connect input[type="url"] {
+    max-width: 400px;
+}
+
+.btcpay-satoshi-tab-panel #btcpay-satoshi-connection-form .title {
+    margin-top: 24px;
+    margin-bottom: 12px;
+}
+
+.btcpay-satoshi-tab-panel .form-table {
+    margin-top: 0;
+}
+
+.btcpay-satoshi-tab-panel > .notice {
+    margin: 0 0 16px;
+}
+
+/* Events section */
+.btcpay-satoshi-admin .btcpay-satoshi-events-section {
+    margin-top: 20px;
+}
+
+.btcpay-satoshi-admin #btcpay-satoshi-refresh-events {
+    margin-bottom: 15px;
+}
+
+.btcpay-satoshi-admin .btcpay-satoshi-ticket-types-table {
+    margin-top: 15px;
+}
+
+.btcpay-satoshi-status-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: 500;
+    margin-right: 6px;
+}
+
+.btcpay-satoshi-status-badge.btcpay-satoshi-status-active {
+    background: #d4edda;
+    color: #155724;
+}
+
+.btcpay-satoshi-status-badge.btcpay-satoshi-status-disabled {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.btcpay-satoshi-admin .btcpay-satoshi-create-product {
+    margin-left: 5px;
+}
+
+/* Ticket type product status badges */
+.btcpay-satoshi-has-product {
+    display: inline-block;
+    padding: 2px 8px;
+    margin-left: 8px;
+    font-size: 11px;
+    font-weight: 500;
+    background: #d4edda;
+    color: #155724;
+    border-radius: 3px;
+}
+
+.btcpay-satoshi-no-product {
+    display: inline-block;
+    padding: 2px 8px;
+    margin-left: 8px;
+    font-size: 11px;
+    color: #6c757d;
+}
+
+.btcpay-satoshi-ticket-types-table tr.btcpay-satoshi-tt-no-product td:first-child {
+    font-style: italic;
+}
+.btcpay-satoshi-subnav-container {
+    margin-left: 15px;
+}
+
+/* Status bar and badges */
+.btcpay-satoshi-status-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+}
+
+.btcpay-satoshi-status {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.btcpay-satoshi-status-connected {
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.btcpay-satoshi-status-disconnected {
+    background: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+.btcpay-satoshi-status-webhook-ok {
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.btcpay-satoshi-status-webhook-no {
+    background: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffeeba;
+}
+
+.btcpay-satoshi-status-webhook-no a {
+    color: #004085;
+    text-decoration: underline;
+}
+
+.btcpay-satoshi-status-satflux {
+    background: #cce5ff;
+    color: #004085;
+    border: 1px solid #b8daff;
+}
+
+/* Product edit: plain selects (avoid SelectWoo conflict) */
+.satoshi_ticket_options select.satoshi-select {
+    min-width: 200px;
+}
