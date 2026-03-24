@@ -176,3 +176,60 @@
 .satoshi_ticket_options select.satoshi-select {
     min-width: 200px;
 }
+
+/* Default ticket type badge */
+.btcpay-satoshi-default-badge {
+    display: inline-block;
+    padding: 2px 6px;
+    margin-left: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    background: #fff3cd;
+    color: #856404;
+    border-radius: 3px;
+    border: 1px solid #ffeeba;
+}
+
+/* Tickets section */
+.btcpay-satoshi-tickets-toolbar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+
+#btcpay-satoshi-tickets-stats {
+    font-size: 13px;
+    color: #50575e;
+}
+
+.btcpay-satoshi-checkin-box {
+    margin-top: 20px;
+    padding: 16px;
+    border: 1px solid #c3c4c7;
+    background: #f6f7f7;
+    max-width: 520px;
+    border-radius: 4px;
+}
+
+.btcpay-satoshi-checkin-box h3 {
+    margin-top: 0;
+}
+
+/* Event form: actions column wrapping */
+.btcpay-satoshi-event-actions {
+    white-space: nowrap;
+}
+
+.btcpay-satoshi-event-actions .button {
+    margin-bottom: 2px;
+}
+
+/* Orders/Tickets sections heading */
+#btcpay-satoshi-tickets-section h2,
+#btcpay-satoshi-orders-section h2 {
+    border-bottom: 1px solid #c3c4c7;
+    padding-bottom: 8px;
+    margin-bottom: 16px;
+}
