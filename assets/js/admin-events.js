@@ -579,6 +579,29 @@
     });
 
     /* -----------------------------------------------------------------------
+     * Bulk create products for all ticket types
+     * --------------------------------------------------------------------- */
+
+    $(document).on('click', '#btcpay-satoshi-bulk-create-products', function () {
+        if (!currentEventId) { alert('Select an event first.'); return; }
+        var $btn = $(this).prop('disabled', true).text(s.loading);
+        $.post(btcpaySatoshiAdmin.ajaxUrl, {
+            action: 'btcpay_satoshi_bulk_create_products',
+            nonce: btcpaySatoshiAdmin.nonce,
+            eventId: currentEventId
+        }).done(function (r) {
+            if (r.success) {
+                var msg = r.data && r.data.message ? r.data.message : s.created;
+                alert(msg);
+                loadTicketTypes(currentEventId, currentEventTitle);
+            } else {
+                alert(r.data && r.data.message ? r.data.message : s.error);
+            }
+        }).fail(function () { alert(s.error); })
+          .always(function () { $btn.prop('disabled', false).text(s.bulkCreateProducts || 'Create all products'); });
+    });
+
+    /* -----------------------------------------------------------------------
      * View Tickets section
      * --------------------------------------------------------------------- */
 

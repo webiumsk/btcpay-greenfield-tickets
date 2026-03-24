@@ -32,6 +32,8 @@ final class AdminWCSettingsTab
         add_action('admin_enqueue_scripts', [__CLASS__, 'enqueueScripts']);
         add_action('admin_init', [__CLASS__, 'handleSatfluxCallback']);
         add_action('admin_init', [__CLASS__, 'maybeSaveFromMainform'], 20);
+        add_action('wp_ajax_btcpay_satoshi_test_connection', [__CLASS__, 'ajaxTestConnection']);
+        add_action('wp_ajax_btcpay_satoshi_test_webhook', [__CLASS__, 'ajaxTestWebhook']);
     }
 
     public static function maybeSaveFromMainform(): void
@@ -64,6 +66,7 @@ final class AdminWCSettingsTab
         $deleteOnUninstall = !empty($_POST['btcpay_satoshi_delete_data_on_uninstall']);
         $stockSyncEnabled = !empty($_POST['btcpay_satoshi_stock_sync_enabled']);
         $stockSyncInterval = isset($_POST['btcpay_satoshi_stock_sync_interval']) ? max(5, min(1440, (int) $_POST['btcpay_satoshi_stock_sync_interval'])) : 15;
+        $lowStockThreshold = isset($_POST['btcpay_satoshi_low_stock_threshold']) ? max(0, (int) $_POST['btcpay_satoshi_low_stock_threshold']) : 0;
         update_option('btcpay_satoshi_url', $url !== '' ? rtrim(esc_url_raw($url), '/') : '');
         update_option('btcpay_satoshi_api_key', $key);
         update_option('btcpay_satoshi_store_id', $storeId);
@@ -74,6 +77,7 @@ final class AdminWCSettingsTab
         update_option('btcpay_satoshi_delete_data_on_uninstall', $deleteOnUninstall ? '1' : '0');
         update_option('btcpay_satoshi_stock_sync_enabled', $stockSyncEnabled ? '1' : '0');
         update_option('btcpay_satoshi_stock_sync_interval', $stockSyncInterval);
+        update_option('btcpay_satoshi_low_stock_threshold', $lowStockThreshold);
         if (class_exists(StockSyncCron::class)) {
             StockSyncCron::unschedule();
             StockSyncCron::scheduleIfNeeded();
@@ -206,6 +210,33 @@ final class AdminWCSettingsTab
                                placeholder="<?php echo esc_attr($usingFallback && !empty($cfg['store_id']) ? $cfg['store_id'] : __('Store GUID', 'btcpay-satoshi-tickets')); ?>" />
                     </td>
                 </tr>
+                <tr>
+                    <th scope="row"></th>
+                    <td>
+                        <button type="button" class="button" id="btcpay-satoshi-test-connection"><?php esc_html_e('Test connection', 'btcpay-satoshi-tickets'); ?></button>
+                        <span id="btcpay-satoshi-test-connection-result" style="margin-left:10px;vertical-align:middle;"></span>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+        <h3 class="title" style="margin-top:24px;"><?php esc_html_e('Webhook', 'btcpay-satoshi-tickets'); ?></h3>
+        <table class="form-table" role="presentation">
+            <tbody>
+                <tr>
+                    <th scope="row"><?php esc_html_e('Webhook URL', 'btcpay-satoshi-tickets'); ?></th>
+                    <td>
+                        <code><?php echo esc_html(WebhookHandler::getWebhookUrl()); ?></code>
+                        <p class="description"><?php esc_html_e('This URL is automatically registered with BTCPay when you save the connection settings.', 'btcpay-satoshi-tickets'); ?></p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"></th>
+                    <td>
+                        <button type="button" class="button" id="btcpay-satoshi-test-webhook"><?php esc_html_e('Test webhook endpoint', 'btcpay-satoshi-tickets'); ?></button>
+                        <span id="btcpay-satoshi-test-webhook-result" style="margin-left:10px;vertical-align:middle;"></span>
+                        <p class="description"><?php esc_html_e('Verifies that your webhook URL is publicly reachable by BTCPay Server.', 'btcpay-satoshi-tickets'); ?></p>
+                    </td>
+                </tr>
             </tbody>
         </table>
         <h3 class="title" style="margin-top:24px;"><?php esc_html_e('Data', 'btcpay-satoshi-tickets'); ?></h3>
@@ -227,6 +258,29 @@ final class AdminWCSettingsTab
                                    value="<?php echo esc_attr((string) get_option('btcpay_satoshi_stock_sync_interval', '15')); ?>"
                                    min="5" max="1440" step="1" style="width:70px;" />
                         </p>
+                        <?php
+                        $lastSync = class_exists(StockSyncCron::class) ? StockSyncCron::getLastSyncTime() : '';
+                        if ($lastSync !== '') :
+                        ?>
+                        <p class="description">
+                            <?php echo esc_html(sprintf(__('Last synced: %s', 'btcpay-satoshi-tickets'), $lastSync)); ?>
+                        </p>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><?php esc_html_e('Low stock alert', 'btcpay-satoshi-tickets'); ?></th>
+                    <td>
+                        <label for="btcpay_satoshi_low_stock_threshold">
+                            <?php esc_html_e('Send email alert when available tickets drop to or below:', 'btcpay-satoshi-tickets'); ?>
+                        </label>
+                        <p style="margin-top:6px;">
+                            <input type="number" id="btcpay_satoshi_low_stock_threshold" name="btcpay_satoshi_low_stock_threshold"
+                                   value="<?php echo esc_attr((string) get_option('btcpay_satoshi_low_stock_threshold', '0')); ?>"
+                                   min="0" step="1" style="width:70px;" />
+                            <?php esc_html_e('tickets', 'btcpay-satoshi-tickets'); ?>
+                        </p>
+                        <p class="description"><?php esc_html_e('Set to 0 to disable. Alert is sent to the WooCommerce stock notification email at most once per 6 hours per product.', 'btcpay-satoshi-tickets'); ?></p>
                     </td>
                 </tr>
                 <tr>
@@ -389,6 +443,79 @@ final class AdminWCSettingsTab
         return $url;
     }
 
+    public static function ajaxTestConnection(): void
+    {
+        if (!check_ajax_referer('btcpay_satoshi_admin', 'nonce', false)) {
+            wp_send_json_error(['message' => 'Security check failed.']);
+        }
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+        $client = new SatoshiApiClient();
+        if (!$client->isConfigured()) {
+            wp_send_json_error(['message' => __('Not configured. Fill in BTCPay URL, API Key and Store ID first.', 'btcpay-satoshi-tickets')]);
+        }
+        $result = $client->getEvents();
+        if ($result['success']) {
+            $count = count($result['data'] ?? []);
+            wp_send_json_success(['message' => sprintf(
+                /* translators: %d: event count */
+                _n('Connection successful. %d event found.', 'Connection successful. %d events found.', $count, 'btcpay-satoshi-tickets'),
+                $count
+            )]);
+        } else {
+            wp_send_json_error(['message' => $result['message'] ?? __('Connection failed.', 'btcpay-satoshi-tickets')]);
+        }
+    }
+
+    public static function ajaxTestWebhook(): void
+    {
+        if (!check_ajax_referer('btcpay_satoshi_admin', 'nonce', false)) {
+            wp_send_json_error(['message' => 'Security check failed.']);
+        }
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+        $webhookUrl = WebhookHandler::getWebhookUrl();
+        $response = wp_remote_post($webhookUrl, [
+            'body'      => '{}',
+            'headers'   => ['Content-Type' => 'application/json'],
+            'timeout'   => 10,
+            'sslverify' => true,
+        ]);
+        if (is_wp_error($response)) {
+            wp_send_json_error(['message' => sprintf(
+                /* translators: %s: error message */
+                __('Webhook URL not reachable: %s', 'btcpay-satoshi-tickets'),
+                $response->get_error_message()
+            )]);
+        }
+        $code = wp_remote_retrieve_response_code($response);
+        // 401 = endpoint exists and signature validation is active (expected for unsigned request)
+        // 400 = endpoint exists but bad payload
+        if ($code === 401 || $code === 400) {
+            wp_send_json_success(['message' => sprintf(
+                /* translators: 1: webhook URL, 2: HTTP code */
+                __('Endpoint reachable at %1$s (HTTP %2$d — signature validation active)', 'btcpay-satoshi-tickets'),
+                $webhookUrl,
+                $code
+            )]);
+        } elseif ($code >= 200 && $code < 300) {
+            wp_send_json_success(['message' => sprintf(
+                /* translators: %d: HTTP status code */
+                __('Endpoint responded (HTTP %d).', 'btcpay-satoshi-tickets'),
+                $code
+            )]);
+        } else {
+            wp_send_json_error(['message' => sprintf(
+                /* translators: 1: HTTP code, 2: webhook URL */
+                __('Unexpected response (HTTP %1$d) from %2$s. Check your site URL and SSL configuration.', 'btcpay-satoshi-tickets'),
+                $code,
+                $webhookUrl
+            )]);
+        }
+    }
+
     public static function enqueueScripts(string $hook): void
     {
         if ($hook !== 'woocommerce_page_wc-settings') {
@@ -403,6 +530,25 @@ final class AdminWCSettingsTab
             [],
             BTCPAY_SATOSHI_TICKETS_VERSION
         );
+
+        if (self::getCurrentSection() !== self::SECTION_EVENTS) {
+            wp_enqueue_script(
+                'btcpay-satoshi-settings',
+                BTCPAY_SATOSHI_TICKETS_PLUGIN_URL . 'assets/js/admin-settings.js',
+                ['jquery'],
+                BTCPAY_SATOSHI_TICKETS_VERSION,
+                true
+            );
+            wp_localize_script('btcpay-satoshi-settings', 'btcpaySatoshiSettings', [
+                'ajaxUrl' => admin_url('admin-ajax.php'),
+                'nonce'   => wp_create_nonce('btcpay_satoshi_admin'),
+                'strings' => [
+                    'testConnection' => __('Test connection', 'btcpay-satoshi-tickets'),
+                    'testWebhook'    => __('Test webhook endpoint', 'btcpay-satoshi-tickets'),
+                    'testing'        => __('Testing…', 'btcpay-satoshi-tickets'),
+                ],
+            ]);
+        }
 
         if (self::getCurrentSection() === self::SECTION_EVENTS) {
         wp_enqueue_script(

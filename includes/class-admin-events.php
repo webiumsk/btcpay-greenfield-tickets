@@ -39,6 +39,7 @@ final class AdminEvents
         add_action('wp_ajax_btcpay_satoshi_upload_event_logo', [__CLASS__, 'ajaxUploadEventLogo']);
         add_action('wp_ajax_btcpay_satoshi_delete_event_logo', [__CLASS__, 'ajaxDeleteEventLogo']);
         add_action('admin_post_btcpay_satoshi_export_tickets', [__CLASS__, 'handleExportTickets']);
+        add_action('wp_ajax_btcpay_satoshi_bulk_create_products', [__CLASS__, 'ajaxBulkCreateProducts']);
     }
 
     public static function renderPage(): void
@@ -190,6 +191,7 @@ final class AdminEvents
             <div id="btcpay-satoshi-ticket-types-section" style="display:none;">
                 <h2><?php esc_html_e('Ticket Types', 'btcpay-satoshi-tickets'); ?>: <span id="btcpay-satoshi-event-title"></span></h2>
                 <button type="button" class="button" id="btcpay-satoshi-add-ticket-type"><?php esc_html_e('Add ticket type', 'btcpay-satoshi-tickets'); ?></button>
+                <button type="button" class="button" id="btcpay-satoshi-bulk-create-products" style="margin-left:6px;"><?php esc_html_e('Create all products', 'btcpay-satoshi-tickets'); ?></button>
                 <div id="btcpay-satoshi-add-tt-form" class="btcpay-satoshi-form" style="display:none; margin-top:1em; padding:1em; border:1px solid #ccc; max-width:500px;">
                     <input type="hidden" id="st-tt-edit-id" value="" />
                     <h3 id="st-tt-form-title"><?php esc_html_e('Create ticket type', 'btcpay-satoshi-tickets'); ?></h3>
@@ -1030,6 +1032,85 @@ final class AdminEvents
             wp_send_json_error(['message' => $result['message'] ?? 'Upload failed.']);
         }
         wp_send_json_success($result['data'] ?? []);
+    }
+
+    public static function ajaxBulkCreateProducts(): void
+    {
+        if (!check_ajax_referer('btcpay_satoshi_admin', 'nonce', false)) {
+            wp_send_json_error(['message' => 'Security check failed.']);
+        }
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+        $eventId = isset($_POST['eventId']) ? sanitize_text_field(wp_unslash($_POST['eventId'])) : '';
+        if ($eventId === '') {
+            wp_send_json_error(['message' => __('Event ID required.', 'btcpay-satoshi-tickets')]);
+        }
+        $client = new SatoshiApiClient();
+        if (!$client->isConfigured()) {
+            wp_send_json_error(['message' => 'BTCPay not configured']);
+        }
+        $result = $client->getTicketTypes($eventId);
+        if (!$result['success'] || empty($result['data'])) {
+            wp_send_json_error(['message' => $result['message'] ?? __('No ticket types found.', 'btcpay-satoshi-tickets')]);
+        }
+        $created = 0;
+        $skipped = 0;
+        foreach ($result['data'] as $tt) {
+            $ttId = $tt['id'] ?? $tt['Id'] ?? '';
+            if ($ttId === '') {
+                continue;
+            }
+            // Skip if a product already exists for this ticket type
+            $existing = self::getProductCountForTicketType($eventId, (string) $ttId);
+            if ($existing > 0) {
+                $skipped++;
+                continue;
+            }
+            $name        = $tt['name'] ?? $tt['Name'] ?? '';
+            $price       = (float) ($tt['price'] ?? $tt['Price'] ?? 0);
+            $description = $tt['description'] ?? $tt['Description'] ?? '';
+            try {
+                $product = new \BTCPaySatoshiTickets\WC_Product_Satoshi_Ticket();
+                $product->set_name($name);
+                $product->set_status('publish');
+                $product->set_catalog_visibility('visible');
+                $product->set_description($description);
+                $product->set_regular_price((string) $price);
+                $product->set_virtual(true);
+                $product->set_sold_individually(false);
+                $product->save();
+                $productId = $product->get_id();
+                if (!$productId) {
+                    continue;
+                }
+                $product->update_meta_data(ProductTypeTicket::META_EVENT_ID, $eventId);
+                $product->update_meta_data(ProductTypeTicket::META_TICKET_TYPE_ID, $ttId);
+                $qty = $client->getTicketTypeQuantityAvailable($eventId, (string) $ttId);
+                if ($qty !== null) {
+                    $product->set_manage_stock(true);
+                    $product->set_stock_quantity($qty);
+                    $product->set_stock_status('instock');
+                }
+                $product->save();
+                if (function_exists('wc_delete_product_transients')) {
+                    wc_delete_product_transients($productId);
+                }
+                $created++;
+            } catch (\Throwable $e) {
+                // continue with next ticket type
+            }
+        }
+        wp_send_json_success([
+            'created' => $created,
+            'skipped' => $skipped,
+            'message' => sprintf(
+                /* translators: 1: created count, 2: skipped count */
+                __('%1$d product(s) created, %2$d skipped (already exist).', 'btcpay-satoshi-tickets'),
+                $created,
+                $skipped
+            ),
+        ]);
     }
 
     public static function ajaxDeleteEventLogo(): void

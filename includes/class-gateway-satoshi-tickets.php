@@ -168,8 +168,8 @@ class GatewaySatoshiTickets extends \WC_Payment_Gateway
                 'title' => __('Discount message', 'btcpay-satoshi-tickets'),
                 'type' => 'text',
                 'description' => __('Message shown for the discount when Bitcoin is selected. Use % as placeholder for the discount percent.', 'btcpay-satoshi-tickets'),
-                'default' => __('% zľava pri platbe bitcoinom', 'btcpay-satoshi-tickets'),
-                'placeholder' => '% zľava pri platbe bitcoinom',
+                'default' => __('% discount for Bitcoin payment', 'btcpay-satoshi-tickets'),
+                'placeholder' => '% discount for Bitcoin payment',
                 'desc_tip' => true,
             ],
         ];
@@ -280,7 +280,7 @@ class GatewaySatoshiTickets extends \WC_Payment_Gateway
         if ($percent <= 0 || $percent >= 100) {
             return $description;
         }
-        $template = $this->get_option('discount_message', __('% zľava pri platbe bitcoinom', 'btcpay-satoshi-tickets'));
+        $template = $this->get_option('discount_message', __('% discount for Bitcoin payment', 'btcpay-satoshi-tickets'));
         $msg = str_replace('%', (string) $percent, $template);
         if ($msg !== '' && $description !== '') {
             return $description . ' ' . $msg;
@@ -340,7 +340,7 @@ class GatewaySatoshiTickets extends \WC_Payment_Gateway
         if ($discountAmount <= 0) {
             return;
         }
-        $template = $this->get_option('discount_message', __('% zľava pri platbe bitcoinom', 'btcpay-satoshi-tickets'));
+        $template = $this->get_option('discount_message', __('% discount for Bitcoin payment', 'btcpay-satoshi-tickets'));
         $label = str_replace('%', (string) $discountPercent, $template);
         $cart->add_fee($label, -$discountAmount, false);
     }

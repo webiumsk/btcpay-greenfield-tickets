@@ -3,7 +3,7 @@
  * Plugin Name: BTCPay GF Satoshi Tickets for WooCommerce
  * Plugin URI: https://github.com/webiumsk/btcpay-greenfield-tickets-woocommerce
  * Description: Sell SatoshiTickets (event tickets) via WooCommerce. Integrates with BTCPay Server SatoshiTickets plugin. Works with or without BTCPay Greenfield for WooCommerce.
- * Version: 1.0.2
+ * Version: 1.1.0
  * Author: webiumsk
  * Author URI: https://www.webium.sk
  * License: MIT
@@ -21,7 +21,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('BTCPAY_SATOSHI_TICKETS_VERSION', '1.0.2');
+define('BTCPAY_SATOSHI_TICKETS_VERSION', '1.1.0');
 define('BTCPAY_SATOSHI_TICKETS_PLUGIN_FILE', __FILE__);
 define('BTCPAY_SATOSHI_TICKETS_PLUGIN_PATH', plugin_dir_path(__FILE__));
 define('BTCPAY_SATOSHI_TICKETS_PLUGIN_URL', plugin_dir_url(__FILE__));
