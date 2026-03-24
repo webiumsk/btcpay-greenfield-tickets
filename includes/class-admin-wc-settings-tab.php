@@ -28,8 +28,6 @@ final class AdminWCSettingsTab
         'btcpay.store.cancreateinvoice',
         'btcpay.store.canmodifyinvoices',
         'btcpay.store.webhooks.canmodifywebhooks',
-        'btcpay.store.canviewsatoshitickets',
-        'btcpay.store.canmanagesatoshitickets',
     ];
 
     public static function init(): void

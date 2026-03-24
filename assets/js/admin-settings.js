@@ -75,7 +75,7 @@
         var permissions  = cfg.btcpayPermissions || [];
         var params       = 'applicationName=' + encodeURIComponent('Satoshi Tickets for WooCommerce');
         params          += '&redirect='        + encodeURIComponent(callbackUrl);
-        params          += '&strict=1&selectiveStores=1';
+        params          += '&strict=true&selectiveStores=true';
         permissions.forEach(function (p) {
             params += '&permissions=' + encodeURIComponent(p);
         });
