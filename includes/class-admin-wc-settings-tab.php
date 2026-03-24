@@ -23,6 +23,15 @@ final class AdminWCSettingsTab
     private const SATFLUX_CONNECT_DEFAULT = 'https://satflux.io';
     private const SATFLUX_CONNECT_PATH = '/woocommerce/satoshi-tickets/connect';
 
+    private const BTCPAY_PERMISSIONS = [
+        'btcpay.store.canviewinvoices',
+        'btcpay.store.cancreateinvoice',
+        'btcpay.store.canmodifyinvoices',
+        'btcpay.store.webhooks.canmodifywebhooks',
+        'btcpay.store.canviewsatoshitickets',
+        'btcpay.store.canmanagesatoshitickets',
+    ];
+
     public static function init(): void
     {
         add_filter('woocommerce_settings_tabs_array', [__CLASS__, 'addTab'], 50);
@@ -31,9 +40,12 @@ final class AdminWCSettingsTab
         add_action('woocommerce_settings_' . self::TAB_ID, [__CLASS__, 'outputContent']);
         add_action('admin_enqueue_scripts', [__CLASS__, 'enqueueScripts']);
         add_action('admin_init', [__CLASS__, 'handleSatfluxCallback']);
+        add_action('admin_init', [__CLASS__, 'handleBtcpayApiKeyCallback']);
         add_action('admin_init', [__CLASS__, 'maybeSaveFromMainform'], 20);
         add_action('wp_ajax_btcpay_satoshi_test_connection', [__CLASS__, 'ajaxTestConnection']);
         add_action('wp_ajax_btcpay_satoshi_test_webhook', [__CLASS__, 'ajaxTestWebhook']);
+        add_action('wp_ajax_btcpay_satoshi_get_stores', [__CLASS__, 'ajaxGetStores']);
+        add_action('wp_ajax_btcpay_satoshi_wizard_save', [__CLASS__, 'ajaxWizardSave']);
     }
 
     public static function maybeSaveFromMainform(): void
@@ -157,68 +169,168 @@ final class AdminWCSettingsTab
         self::renderConnectionStatusBar();
         Settings::renderConnectionNotices();
 
-        $ownUrl = get_option('btcpay_satoshi_url', '');
-        $ownKey = get_option('btcpay_satoshi_api_key', '');
-        $ownStore = get_option('btcpay_satoshi_store_id', '');
-        $cfg = SatoshiApiClient::getConfig();
+        if (isset($_GET['btcpay_connected']) && $_GET['btcpay_connected'] === '1') {
+            echo '<div class="notice notice-success is-dismissible" style="margin:0 0 16px;"><p>' .
+                esc_html__('Connected to BTCPay Server successfully. Webhook has been registered.', 'btcpay-satoshi-tickets') . '</p></div>';
+        }
+
+        $pickStore     = isset($_GET['btcpay_pick_store']) && $_GET['btcpay_pick_store'] === '1';
+        $ownUrl        = get_option('btcpay_satoshi_url', '');
+        $ownKey        = get_option('btcpay_satoshi_api_key', '');
+        $ownStore      = get_option('btcpay_satoshi_store_id', '');
+        $cfg           = SatoshiApiClient::getConfig();
         $usingFallback = !empty($cfg) && ($ownUrl === '' && $ownKey === '' && $ownStore === '');
-        $hasGf = defined('BTCPAYSERVER_PLUGIN_FILE_PATH');
+        $hasGf         = defined('BTCPAYSERVER_PLUGIN_FILE_PATH');
+        $satfluxUrl    = get_option('btcpay_satoshi_satflux_url', self::SATFLUX_CONNECT_DEFAULT);
+        $returnUrl     = self::getTabUrl(self::SECTION_CONNECTION);
+        $satfluxConnectUrl = rtrim($satfluxUrl, '/') . self::SATFLUX_CONNECT_PATH
+            . '?return_url=' . rawurlencode($returnUrl) . '&return_satflux_store_id=1';
+        $wizardCallbackUrl = add_query_arg('btcpay_satoshi_connect', '1', $returnUrl);
         ?>
-        <?php self::renderSatfluxConnectSection(); ?>
-        <h3 class="title"><?php esc_html_e('Manual configuration', 'btcpay-satoshi-tickets'); ?></h3>
-        <?php if ($usingFallback) : ?>
-            <div class="notice notice-info inline" style="margin:0 0 1em 0;">
+        <?php if (isset($_GET['satflux_connected']) && $_GET['satflux_connected'] === '1') : ?>
+        <div class="notice notice-success is-dismissible" style="margin:0 0 16px;"><p><?php esc_html_e('Connected to Satflux.io successfully.', 'btcpay-satoshi-tickets'); ?></p></div>
+        <?php endif; ?>
+
+        <!-- Always submit show_satflux=1 so the status badge remains consistent -->
+        <input type="hidden" name="btcpay_satoshi_show_satflux" value="1" />
+
+        <h3 class="title" style="margin-top:0;"><?php esc_html_e('Quick Setup', 'btcpay-satoshi-tickets'); ?></h3>
+        <div class="btcpay-satoshi-connect-cards">
+
+            <!-- Card A: Satflux.io -->
+            <div class="btcpay-satoshi-connect-card">
+                <h4><?php esc_html_e('Satflux.io', 'btcpay-satoshi-tickets'); ?></h4>
+                <p class="description"><?php esc_html_e('One-click setup for Satflux.io users. Automatically configures your BTCPay connection and check-in links.', 'btcpay-satoshi-tickets'); ?></p>
                 <p>
-                    <?php
-                    printf(
+                    <a href="<?php echo esc_url($satfluxConnectUrl); ?>"
+                       class="button button-primary"
+                       id="btcpay-satoshi-connect-satflux"
+                       data-return-url="<?php echo esc_attr($returnUrl); ?>"
+                       data-connect-path="<?php echo esc_attr(self::SATFLUX_CONNECT_PATH); ?>">
+                        <?php esc_html_e('Connect to Satflux.io →', 'btcpay-satoshi-tickets'); ?>
+                    </a>
+                </p>
+                <details style="margin-top:10px;">
+                    <summary style="cursor:pointer;font-size:12px;color:#646970;"><?php esc_html_e('Satflux.io settings', 'btcpay-satoshi-tickets'); ?></summary>
+                    <div style="margin-top:10px;">
+                        <p>
+                            <label for="btcpay_satoshi_satflux_url" style="display:block;margin-bottom:3px;"><?php esc_html_e('Satflux.io URL', 'btcpay-satoshi-tickets'); ?></label>
+                            <input type="url" id="btcpay_satoshi_satflux_url" name="btcpay_satoshi_satflux_url"
+                                   value="<?php echo esc_attr($satfluxUrl); ?>"
+                                   class="regular-text" placeholder="https://satflux.io" />
+                        </p>
+                        <p>
+                            <label for="btcpay_satoshi_satflux_store_id" style="display:block;margin-bottom:3px;"><?php esc_html_e('Satflux Store ID (check-in links)', 'btcpay-satoshi-tickets'); ?></label>
+                            <input type="text" id="btcpay_satoshi_satflux_store_id" name="btcpay_satoshi_satflux_store_id"
+                                   value="<?php echo esc_attr(get_option('btcpay_satoshi_satflux_store_id', '')); ?>"
+                                   class="regular-text" />
+                        </p>
+                        <p>
+                            <label for="btcpay_satoshi_satflux_checkin_store_id" style="display:block;margin-bottom:3px;"><?php esc_html_e('Satflux Check-in Store ID', 'btcpay-satoshi-tickets'); ?></label>
+                            <input type="text" id="btcpay_satoshi_satflux_checkin_store_id" name="btcpay_satoshi_satflux_checkin_store_id"
+                                   value="<?php echo esc_attr(get_option('btcpay_satoshi_satflux_checkin_store_id', '')); ?>"
+                                   class="regular-text" />
+                            <br><span class="description" style="font-size:11px;"><?php esc_html_e('If different from Satflux Store ID above.', 'btcpay-satoshi-tickets'); ?></span>
+                        </p>
+                    </div>
+                </details>
+            </div>
+
+            <!-- Card B: Direct BTCPay Server -->
+            <div class="btcpay-satoshi-connect-card">
+                <h4><?php esc_html_e('Direct BTCPay Server', 'btcpay-satoshi-tickets'); ?></h4>
+                <p class="description"><?php esc_html_e('Connect to any self-hosted BTCPay Server instance. No third-party service required.', 'btcpay-satoshi-tickets'); ?></p>
+                <?php if ($pickStore) : ?>
+                    <p><strong><?php esc_html_e('Step 2: Select your store', 'btcpay-satoshi-tickets'); ?></strong></p>
+                    <p class="description"><?php esc_html_e('API key authorized. Choose which store to use:', 'btcpay-satoshi-tickets'); ?></p>
+                    <p id="btcpay-satoshi-stores-loading"><?php esc_html_e('Loading stores…', 'btcpay-satoshi-tickets'); ?></p>
+                    <div id="btcpay-satoshi-stores-list" style="display:none;margin-top:8px;">
+                        <select id="btcpay-satoshi-store-select" style="min-width:180px;margin-right:8px;">
+                            <option value=""><?php esc_html_e('— Select a store —', 'btcpay-satoshi-tickets'); ?></option>
+                        </select>
+                        <button type="button" class="button button-primary" id="btcpay-satoshi-wizard-save">
+                            <?php esc_html_e('Connect', 'btcpay-satoshi-tickets'); ?>
+                        </button>
+                        <span id="btcpay-satoshi-wizard-save-result" style="margin-left:10px;vertical-align:middle;"></span>
+                    </div>
+                    <p id="btcpay-satoshi-stores-error" style="display:none;color:#a00;"></p>
+                <?php else : ?>
+                    <p>
+                        <label for="btcpay-satoshi-wizard-url" style="display:block;margin-bottom:3px;font-weight:600;"><?php esc_html_e('BTCPay Server URL', 'btcpay-satoshi-tickets'); ?></label>
+                        <input type="url" id="btcpay-satoshi-wizard-url"
+                               value="<?php echo esc_attr($ownUrl); ?>"
+                               class="regular-text" placeholder="https://btcpay.example.com" />
+                    </p>
+                    <p>
+                        <button type="button" class="button button-primary" id="btcpay-satoshi-wizard-authorize"
+                                data-callback-url="<?php echo esc_attr($wizardCallbackUrl); ?>">
+                            <?php esc_html_e('Authorize on BTCPay →', 'btcpay-satoshi-tickets'); ?>
+                        </button>
+                        <span id="btcpay-satoshi-wizard-error" style="display:none;color:#a00;margin-left:8px;font-size:12px;"></span>
+                    </p>
+                    <p class="description" style="font-size:11px;margin-top:0;">
+                        <?php esc_html_e('You will be redirected to BTCPay to authorize the connection. Required permissions are requested automatically.', 'btcpay-satoshi-tickets'); ?>
+                    </p>
+                <?php endif; ?>
+            </div>
+
+        </div><!-- .btcpay-satoshi-connect-cards -->
+
+        <!-- Advanced: Manual configuration -->
+        <details class="btcpay-satoshi-manual-config" style="margin:20px 0 0;">
+            <summary><?php esc_html_e('Advanced: Manual configuration', 'btcpay-satoshi-tickets'); ?></summary>
+            <div style="margin-top:16px;">
+            <?php if ($usingFallback) : ?>
+                <div class="notice notice-info inline" style="margin:0 0 1em 0;">
+                    <p><?php printf(
                         esc_html__('Connection uses %s. Fill in the fields below to override.', 'btcpay-satoshi-tickets'),
                         '<strong>' . esc_html__('BTCPay Greenfield plugin settings', 'btcpay-satoshi-tickets') . '</strong>'
-                    );
-                    ?>
-                </p>
+                    ); ?></p>
+                </div>
+            <?php endif; ?>
+            <table class="form-table" role="presentation">
+                <tbody>
+                    <tr>
+                        <th scope="row"><label for="btcpay_satoshi_url"><?php esc_html_e('BTCPay Server URL', 'btcpay-satoshi-tickets'); ?></label></th>
+                        <td>
+                            <input type="url" id="btcpay_satoshi_url" name="btcpay_satoshi_url"
+                                   value="<?php echo esc_attr($ownUrl); ?>"
+                                   class="regular-text"
+                                   placeholder="<?php echo esc_attr($usingFallback ? ($cfg['url'] ?? '') : 'https://btcpay.example.com'); ?>" />
+                            <?php if ($hasGf) : ?>
+                                <p class="description"><?php esc_html_e('Override. Leave empty to use BTCPay Greenfield plugin settings.', 'btcpay-satoshi-tickets'); ?></p>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="btcpay_satoshi_api_key"><?php esc_html_e('API Key', 'btcpay-satoshi-tickets'); ?></label></th>
+                        <td>
+                            <input type="password" id="btcpay_satoshi_api_key" name="btcpay_satoshi_api_key"
+                                   value="<?php echo esc_attr($ownKey); ?>"
+                                   class="regular-text" autocomplete="off"
+                                   placeholder="<?php echo $usingFallback ? esc_attr__('(from BTCPay Greenfield)', 'btcpay-satoshi-tickets') : ''; ?>" />
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="btcpay_satoshi_store_id"><?php esc_html_e('Store ID', 'btcpay-satoshi-tickets'); ?></label></th>
+                        <td>
+                            <input type="text" id="btcpay_satoshi_store_id" name="btcpay_satoshi_store_id"
+                                   value="<?php echo esc_attr($ownStore); ?>"
+                                   class="regular-text"
+                                   placeholder="<?php echo esc_attr($usingFallback && !empty($cfg['store_id']) ? $cfg['store_id'] : __('Store GUID', 'btcpay-satoshi-tickets')); ?>" />
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"></th>
+                        <td>
+                            <button type="button" class="button" id="btcpay-satoshi-test-connection"><?php esc_html_e('Test connection', 'btcpay-satoshi-tickets'); ?></button>
+                            <span id="btcpay-satoshi-test-connection-result" style="margin-left:10px;vertical-align:middle;"></span>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
             </div>
-        <?php endif; ?>
-        <table class="form-table" role="presentation">
-            <tbody>
-                <tr>
-                    <th scope="row"><label for="btcpay_satoshi_url"><?php esc_html_e('BTCPay Server URL', 'btcpay-satoshi-tickets'); ?></label></th>
-                    <td>
-                        <input type="url" id="btcpay_satoshi_url" name="btcpay_satoshi_url"
-                               value="<?php echo esc_attr($ownUrl); ?>"
-                               class="regular-text"
-                               placeholder="<?php echo esc_attr($usingFallback ? ($cfg['url'] ?? '') : 'https://btcpay.example.com'); ?>" />
-                        <?php if ($hasGf) : ?>
-                            <p class="description"><?php esc_html_e('Override. Leave empty to use BTCPay Greenfield plugin settings.', 'btcpay-satoshi-tickets'); ?></p>
-                        <?php endif; ?>
-                    </td>
-                </tr>
-                <tr>
-                    <th scope="row"><label for="btcpay_satoshi_api_key"><?php esc_html_e('API Key', 'btcpay-satoshi-tickets'); ?></label></th>
-                    <td>
-                        <input type="password" id="btcpay_satoshi_api_key" name="btcpay_satoshi_api_key"
-                               value="<?php echo esc_attr($ownKey); ?>"
-                               class="regular-text" autocomplete="off"
-                               placeholder="<?php echo $usingFallback ? esc_attr__('(from BTCPay Greenfield)', 'btcpay-satoshi-tickets') : ''; ?>" />
-                    </td>
-                </tr>
-                <tr>
-                    <th scope="row"><label for="btcpay_satoshi_store_id"><?php esc_html_e('Store ID', 'btcpay-satoshi-tickets'); ?></label></th>
-                    <td>
-                        <input type="text" id="btcpay_satoshi_store_id" name="btcpay_satoshi_store_id"
-                               value="<?php echo esc_attr($ownStore); ?>"
-                               class="regular-text"
-                               placeholder="<?php echo esc_attr($usingFallback && !empty($cfg['store_id']) ? $cfg['store_id'] : __('Store GUID', 'btcpay-satoshi-tickets')); ?>" />
-                    </td>
-                </tr>
-                <tr>
-                    <th scope="row"></th>
-                    <td>
-                        <button type="button" class="button" id="btcpay-satoshi-test-connection"><?php esc_html_e('Test connection', 'btcpay-satoshi-tickets'); ?></button>
-                        <span id="btcpay-satoshi-test-connection-result" style="margin-left:10px;vertical-align:middle;"></span>
-                    </td>
-                </tr>
-            </tbody>
-        </table>
+        </details>
         <h3 class="title" style="margin-top:24px;"><?php esc_html_e('Webhook', 'btcpay-satoshi-tickets'); ?></h3>
         <table class="form-table" role="presentation">
             <tbody>
@@ -324,85 +436,6 @@ final class AdminWCSettingsTab
         <?php
     }
 
-    private static function renderSatfluxConnectSection(): void
-    {
-        $showSatflux = get_option('btcpay_satoshi_show_satflux', '0') === '1';
-        $satfluxUrl = get_option('btcpay_satoshi_satflux_url', self::SATFLUX_CONNECT_DEFAULT);
-        $returnUrl = self::getTabUrl(self::SECTION_CONNECTION);
-        $connectUrl = rtrim($satfluxUrl, '/') . self::SATFLUX_CONNECT_PATH . '?return_url=' . rawurlencode($returnUrl) . '&return_satflux_store_id=1';
-        if (isset($_GET['satflux_connected']) && $_GET['satflux_connected'] === '1') {
-            echo '<div class="notice notice-success is-dismissible"><p>' .
-                esc_html__('Connected to Satflux.io successfully.', 'btcpay-satoshi-tickets') . '</p></div>';
-        }
-        ?>
-        <div class="btcpay-satoshi-satflux-connect">
-            <p style="margin-top:0;">
-                <label>
-                    <input type="checkbox" id="btcpay_satoshi_show_satflux" name="btcpay_satoshi_show_satflux" value="1" <?php checked($showSatflux); ?> />
-                    <?php esc_html_e('Quick connect to Satflux.io', 'btcpay-satoshi-tickets'); ?>
-                </label>
-            </p>
-            <p class="description" style="margin-bottom:12px;">
-                <?php
-                printf(
-                    /* translators: %s: URL to Satflux.io */
-                    esc_html__('Satflux.io is an external frontend for BTCPay Server. One-click setup for Satflux users. Learn more: %s', 'btcpay-satoshi-tickets'),
-                    '<a href="https://satflux.io" target="_blank" rel="noopener noreferrer">https://satflux.io</a>'
-                );
-                ?>
-            </p>
-            <div id="btcpay-satoshi-satflux-fields" style="<?php echo $showSatflux ? '' : 'display:none;'; ?>">
-                <p>
-                    <label for="btcpay_satoshi_satflux_url"><?php esc_html_e('Satflux.io URL', 'btcpay-satoshi-tickets'); ?></label><br>
-                    <input type="url" id="btcpay_satoshi_satflux_url" name="btcpay_satoshi_satflux_url" value="<?php echo esc_attr($satfluxUrl); ?>"
-                           class="regular-text" placeholder="https://satflux.io" />
-                </p>
-                <p>
-                    <label for="btcpay_satoshi_satflux_store_id"><?php esc_html_e('BTCPay Store ID', 'btcpay-satoshi-tickets'); ?></label><br>
-                    <input type="text" id="btcpay_satoshi_satflux_store_id" name="btcpay_satoshi_satflux_store_id"
-                           value="<?php echo esc_attr(get_option('btcpay_satoshi_satflux_store_id', '')); ?>"
-                           class="regular-text" placeholder="<?php esc_attr_e('BTCPay Store ID (GUID)', 'btcpay-satoshi-tickets'); ?>" />
-                    <br><span class="description"><?php esc_html_e('Your BTCPay Server store identifier (GUID).', 'btcpay-satoshi-tickets'); ?></span>
-                </p>
-                <p>
-                    <label for="btcpay_satoshi_satflux_checkin_store_id"><?php esc_html_e('Satflux Store ID (for Check-in)', 'btcpay-satoshi-tickets'); ?></label><br>
-                    <input type="text" id="btcpay_satoshi_satflux_checkin_store_id" name="btcpay_satoshi_satflux_checkin_store_id"
-                           value="<?php echo esc_attr(get_option('btcpay_satoshi_satflux_checkin_store_id', '')); ?>"
-                           class="regular-text" placeholder="<?php esc_attr_e('Satflux store ID for check-in', 'btcpay-satoshi-tickets'); ?>" />
-                    <br><span class="description"><?php esc_html_e('Required for Check-in links in Events. This is the store ID in Satflux.io (different from BTCPay Store ID). You find it in your Satflux.io dashboard or after connecting via the button below if Satflux returns it.', 'btcpay-satoshi-tickets'); ?></span>
-                </p>
-                <p>
-                    <a href="<?php echo esc_url($connectUrl); ?>" class="button button-primary" id="btcpay-satoshi-connect-satflux" data-return-url="<?php echo esc_attr($returnUrl); ?>" data-connect-path="<?php echo esc_attr(self::SATFLUX_CONNECT_PATH); ?>">
-                        <?php esc_html_e('Connect to Satflux.io', 'btcpay-satoshi-tickets'); ?>
-                    </a>
-                </p>
-            </div>
-            <script>
-            document.addEventListener('DOMContentLoaded', function() {
-                var cb = document.getElementById('btcpay_satoshi_show_satflux');
-                var fields = document.getElementById('btcpay-satoshi-satflux-fields');
-                var btn = document.getElementById('btcpay-satoshi-connect-satflux');
-                var input = document.getElementById('btcpay_satoshi_satflux_url');
-                if (cb && fields) {
-                    cb.addEventListener('change', function() { fields.style.display = this.checked ? 'block' : 'none'; });
-                }
-                if (btn && input) {
-                    btn.addEventListener('click', function(e) {
-                        var base = (input.value || '').trim().replace(/\/+$/, '') || 'https://satflux.io';
-                        var path = btn.getAttribute('data-connect-path') || '/woocommerce/satoshi-tickets/connect';
-                        var returnUrl = btn.getAttribute('data-return-url') || '';
-                        var sep = '?';
-                        var q = returnUrl ? 'return_url=' + encodeURIComponent(returnUrl) : '';
-                        if (q) { q += '&'; }
-                        q += 'return_satflux_store_id=1';
-                        btn.href = base + path + sep + q;
-                    });
-                }
-            });
-            </script>
-        </div>
-        <?php
-    }
 
     public static function getCurrentSection(): string
     {
@@ -516,6 +549,105 @@ final class AdminWCSettingsTab
         }
     }
 
+    /**
+     * Handle BTCPay API key authorization callback.
+     * BTCPay redirects back with ?btcpay_satoshi_connect=1&apiKey=...&storeId=...&btcpay_url=...
+     */
+    public static function handleBtcpayApiKeyCallback(): void
+    {
+        if (!isset($_GET['btcpay_satoshi_connect']) || $_GET['btcpay_satoshi_connect'] !== '1') {
+            return;
+        }
+        if (!current_user_can('manage_woocommerce')) {
+            return;
+        }
+        $apiKey    = isset($_GET['apiKey'])     ? sanitize_text_field(wp_unslash($_GET['apiKey']))     : '';
+        $storeId   = isset($_GET['storeId'])    ? sanitize_text_field(wp_unslash($_GET['storeId']))    : '';
+        $btcpayUrl = isset($_GET['btcpay_url']) ? sanitize_text_field(wp_unslash($_GET['btcpay_url'])) : '';
+
+        if ($apiKey === '' || $btcpayUrl === '') {
+            return;
+        }
+        update_option('btcpay_satoshi_url', rtrim(esc_url_raw($btcpayUrl), '/'));
+        update_option('btcpay_satoshi_api_key', $apiKey);
+        update_option('btcpay_satoshi_connected_via_satflux', '0');
+
+        $base = self::getTabUrl(self::SECTION_CONNECTION);
+        if ($storeId !== '') {
+            update_option('btcpay_satoshi_store_id', $storeId);
+            WebhookHandler::registerWebhook();
+            wp_safe_redirect(add_query_arg('btcpay_connected', '1', $base));
+            exit;
+        }
+        // No storeId — show store picker (url+key already saved)
+        wp_safe_redirect(add_query_arg('btcpay_pick_store', '1', $base));
+        exit;
+    }
+
+    /**
+     * AJAX: return list of stores for the currently-saved BTCPay connection.
+     */
+    public static function ajaxGetStores(): void
+    {
+        if (!check_ajax_referer('btcpay_satoshi_admin', 'nonce', false)) {
+            wp_send_json_error(['message' => 'Security check failed.']);
+        }
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => 'Unauthorized.']);
+        }
+        $url = rtrim((string) get_option('btcpay_satoshi_url', ''), '/');
+        $key = (string) get_option('btcpay_satoshi_api_key', '');
+        if ($url === '' || $key === '') {
+            wp_send_json_error(['message' => __('BTCPay URL or API key not set.', 'btcpay-satoshi-tickets')]);
+        }
+        $response = wp_remote_get($url . '/api/v1/stores', [
+            'headers'  => ['Authorization' => 'token ' . $key],
+            'timeout'  => 15,
+            'sslverify' => true,
+        ]);
+        if (is_wp_error($response)) {
+            wp_send_json_error(['message' => $response->get_error_message()]);
+        }
+        $code = wp_remote_retrieve_response_code($response);
+        $body = json_decode(wp_remote_retrieve_body($response), true);
+        if ($code === 200 && is_array($body)) {
+            $stores = array_values(array_filter(array_map(
+                fn($s) => ['id' => (string)($s['id'] ?? ''), 'name' => (string)($s['name'] ?? '')],
+                $body
+            ), fn($s) => $s['id'] !== ''));
+            wp_send_json_success(['stores' => $stores]);
+        } else {
+            wp_send_json_error(['message' => sprintf(
+                /* translators: %d: HTTP status code */
+                __('Could not fetch stores (HTTP %d). Check API key permissions.', 'btcpay-satoshi-tickets'),
+                $code
+            )]);
+        }
+    }
+
+    /**
+     * AJAX: save store ID chosen in wizard and register webhook.
+     */
+    public static function ajaxWizardSave(): void
+    {
+        if (!check_ajax_referer('btcpay_satoshi_admin', 'nonce', false)) {
+            wp_send_json_error(['message' => 'Security check failed.']);
+        }
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => 'Unauthorized.']);
+        }
+        $storeId = isset($_POST['storeId']) ? sanitize_text_field(wp_unslash($_POST['storeId'])) : '';
+        if ($storeId === '') {
+            wp_send_json_error(['message' => __('Please select a store.', 'btcpay-satoshi-tickets')]);
+        }
+        update_option('btcpay_satoshi_store_id', $storeId);
+        $client = new SatoshiApiClient();
+        if ($client->isConfigured()) {
+            WebhookHandler::registerWebhook();
+        }
+        wp_send_json_success(['message' => __('Connected successfully! Webhook registered.', 'btcpay-satoshi-tickets')]);
+    }
+
     public static function enqueueScripts(string $hook): void
     {
         if ($hook !== 'woocommerce_page_wc-settings') {
@@ -540,12 +672,20 @@ final class AdminWCSettingsTab
                 true
             );
             wp_localize_script('btcpay-satoshi-settings', 'btcpaySatoshiSettings', [
-                'ajaxUrl' => admin_url('admin-ajax.php'),
-                'nonce'   => wp_create_nonce('btcpay_satoshi_admin'),
+                'ajaxUrl'            => admin_url('admin-ajax.php'),
+                'nonce'              => wp_create_nonce('btcpay_satoshi_admin'),
+                'pickStore'          => isset($_GET['btcpay_pick_store']) && $_GET['btcpay_pick_store'] === '1',
+                'connectedUrl'       => add_query_arg('btcpay_connected', '1', self::getTabUrl(self::SECTION_CONNECTION)),
+                'btcpayPermissions'  => self::BTCPAY_PERMISSIONS,
                 'strings' => [
-                    'testConnection' => __('Test connection', 'btcpay-satoshi-tickets'),
-                    'testWebhook'    => __('Test webhook endpoint', 'btcpay-satoshi-tickets'),
-                    'testing'        => __('Testing…', 'btcpay-satoshi-tickets'),
+                    'testConnection'    => __('Test connection', 'btcpay-satoshi-tickets'),
+                    'testWebhook'       => __('Test webhook endpoint', 'btcpay-satoshi-tickets'),
+                    'testing'           => __('Testing…', 'btcpay-satoshi-tickets'),
+                    'loading'           => __('Loading…', 'btcpay-satoshi-tickets'),
+                    'error'             => __('Error. Check connection.', 'btcpay-satoshi-tickets'),
+                    'wizardUrlRequired' => __('Please enter the BTCPay Server URL.', 'btcpay-satoshi-tickets'),
+                    'wizardSelectStore' => __('Please select a store.', 'btcpay-satoshi-tickets'),
+                    'wizardConnect'     => __('Connect', 'btcpay-satoshi-tickets'),
                 ],
             ]);
         }

@@ -226,6 +226,51 @@
     margin-bottom: 2px;
 }
 
+/* Connection wizard cards */
+.btcpay-satoshi-connect-cards {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 4px;
+}
+
+.btcpay-satoshi-connect-card {
+    flex: 1;
+    min-width: 260px;
+    max-width: 460px;
+    padding: 20px 24px;
+    border: 1px solid #c3c4c7;
+    background: #f6f7f7;
+    border-radius: 4px;
+}
+
+.btcpay-satoshi-connect-card h4 {
+    margin: 0 0 8px;
+    padding: 0;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.btcpay-satoshi-connect-card p {
+    margin: 0 0 10px;
+}
+
+.btcpay-satoshi-connect-card .description {
+    color: #50575e;
+}
+
+.btcpay-satoshi-manual-config > summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: #2271b1;
+    font-size: 13px;
+    padding: 4px 0;
+}
+
+.btcpay-satoshi-manual-config > summary:hover {
+    color: #135e96;
+}
+
 /* Orders/Tickets sections heading */
 #btcpay-satoshi-tickets-section h2,
 #btcpay-satoshi-orders-section h2 {
