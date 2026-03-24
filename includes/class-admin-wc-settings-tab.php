@@ -179,7 +179,8 @@ final class AdminWCSettingsTab
         $ownKey        = get_option('btcpay_satoshi_api_key', '');
         $ownStore      = get_option('btcpay_satoshi_store_id', '');
         $cfg           = SatoshiApiClient::getConfig();
-        $usingFallback = !empty($cfg) && ($ownUrl === '' && $ownKey === '' && $ownStore === '');
+        $hasOwnConfig  = $ownUrl !== '' && $ownKey !== '' && $ownStore !== '';
+        $usingFallback = !$hasOwnConfig && !empty($cfg);
         $hasGf         = defined('BTCPAYSERVER_PLUGIN_FILE_PATH');
         $satfluxUrl    = get_option('btcpay_satoshi_satflux_url', self::SATFLUX_CONNECT_DEFAULT);
         $returnUrl     = self::getTabUrl(self::SECTION_CONNECTION);
@@ -282,10 +283,16 @@ final class AdminWCSettingsTab
             <div style="margin-top:16px;">
             <?php if ($usingFallback) : ?>
                 <div class="notice notice-info inline" style="margin:0 0 1em 0;">
-                    <p><?php printf(
-                        esc_html__('Connection uses %s. Fill in the fields below to override.', 'btcpay-satoshi-tickets'),
-                        '<strong>' . esc_html__('BTCPay Greenfield plugin settings', 'btcpay-satoshi-tickets') . '</strong>'
-                    ); ?></p>
+                    <p><?php
+                    if ($hasGf) {
+                        printf(
+                            esc_html__('Connection uses %s. Fill in all fields below to use your own settings.', 'btcpay-satoshi-tickets'),
+                            '<strong>' . esc_html__('BTCPay Greenfield plugin settings', 'btcpay-satoshi-tickets') . '</strong>'
+                        );
+                    } else {
+                        esc_html_e('Incomplete or missing configuration — some fields below are empty. Fill in all three fields (URL, API Key, Store ID) and save to configure this plugin directly.', 'btcpay-satoshi-tickets');
+                    }
+                    ?></p>
                 </div>
             <?php endif; ?>
             <table class="form-table" role="presentation">
@@ -413,21 +420,34 @@ final class AdminWCSettingsTab
 
     private static function renderConnectionStatusBar(): void
     {
-        $client = new SatoshiApiClient();
+        $client       = new SatoshiApiClient();
         $isConfigured = $client->isConfigured();
-        $hasWebhook = WebhookHandler::hasWebhookSecret();
-        $viaSatflux = self::isConnectedViaSatflux();
+        $hasWebhook   = WebhookHandler::hasWebhookSecret();
+        $viaSatflux   = self::isConnectedViaSatflux();
+        $cfg          = SatoshiApiClient::getConfig();
+        $activeUrl    = $isConfigured ? preg_replace('#^https?://#', '', rtrim($cfg['url'] ?? '', '/')) : '';
+        $hasOwnUrl    = get_option('btcpay_satoshi_url', '') !== '';
+        $usingGfOpts  = $isConfigured && !$hasOwnUrl && !defined('BTCPAYSERVER_PLUGIN_FILE_PATH');
         ?>
-        <div class="btcpay-satoshi-status-bar">
+        <div class="btcpay-satoshi-status-bar" style="margin-bottom:16px;">
             <?php if ($isConfigured) : ?>
-                <span class="btcpay-satoshi-status btcpay-satoshi-status-connected"><?php esc_html_e('BTCPay: Connected', 'btcpay-satoshi-tickets'); ?></span>
+                <span class="btcpay-satoshi-status btcpay-satoshi-status-connected">
+                    <?php esc_html_e('BTCPay: Connected', 'btcpay-satoshi-tickets'); ?>
+                    <?php if ($activeUrl) : ?>
+                        &nbsp;<span style="font-weight:400;opacity:.75;">(<?php echo esc_html($activeUrl); ?>)</span>
+                    <?php endif; ?>
+                </span>
                 <?php if ($hasWebhook) : ?>
                     <span class="btcpay-satoshi-status btcpay-satoshi-status-webhook-ok"><?php esc_html_e('Webhook: Registered', 'btcpay-satoshi-tickets'); ?></span>
                 <?php else : ?>
                     <span class="btcpay-satoshi-status btcpay-satoshi-status-webhook-no"><?php esc_html_e('Webhook: Not registered', 'btcpay-satoshi-tickets'); ?></span>
                 <?php endif; ?>
                 <?php if ($viaSatflux) : ?>
-                    <span class="btcpay-satoshi-status btcpay-satoshi-status-satflux"><?php esc_html_e('Connected via Satflux.io', 'btcpay-satoshi-tickets'); ?></span>
+                    <span class="btcpay-satoshi-status btcpay-satoshi-status-satflux"><?php esc_html_e('via Satflux.io', 'btcpay-satoshi-tickets'); ?></span>
+                <?php elseif ($usingGfOpts) : ?>
+                    <span class="btcpay-satoshi-status btcpay-satoshi-status-webhook-no">
+                        <?php esc_html_e('Using leftover BTCPay Greenfield settings — save your own below to take over', 'btcpay-satoshi-tickets'); ?>
+                    </span>
                 <?php endif; ?>
             <?php else : ?>
                 <span class="btcpay-satoshi-status btcpay-satoshi-status-disconnected"><?php esc_html_e('BTCPay: Not configured', 'btcpay-satoshi-tickets'); ?></span>
