@@ -171,6 +171,14 @@ final class AdminWCSettingsTab
             echo '<div class="notice notice-success is-dismissible" style="margin:0 0 16px;"><p>' .
                 esc_html__('Connected to BTCPay Server successfully. Webhook has been registered.', 'btcpay-satoshi-tickets') . '</p></div>';
         }
+        if (isset($_GET['btcpay_connect_cancelled']) && $_GET['btcpay_connect_cancelled'] === '1') {
+            echo '<div class="notice notice-warning is-dismissible" style="margin:0 0 16px;"><p>' .
+                esc_html__('BTCPay authorization was cancelled or no API key was returned. Please try again.', 'btcpay-satoshi-tickets') . '</p></div>';
+        }
+        if (isset($_GET['btcpay_connect_error'])) {
+            echo '<div class="notice notice-error is-dismissible" style="margin:0 0 16px;"><p>' .
+                esc_html__('BTCPay authorization callback was incomplete. Please try again and make sure you authorize on the correct BTCPay instance.', 'btcpay-satoshi-tickets') . '</p></div>';
+        }
 
         $pickStore     = isset($_GET['btcpay_pick_store']) && $_GET['btcpay_pick_store'] === '1';
         $ownUrl        = get_option('btcpay_satoshi_url', '');
@@ -583,14 +591,23 @@ final class AdminWCSettingsTab
         $storeId   = isset($_GET['storeId'])    ? sanitize_text_field(wp_unslash($_GET['storeId']))    : '';
         $btcpayUrl = isset($_GET['btcpay_url']) ? sanitize_text_field(wp_unslash($_GET['btcpay_url'])) : '';
 
-        if ($apiKey === '' || $btcpayUrl === '') {
-            return;
+        $base = self::getTabUrl(self::SECTION_CONNECTION);
+
+        // Cancelled or BTCPay did not return an API key
+        if ($apiKey === '') {
+            wp_safe_redirect(add_query_arg('btcpay_connect_cancelled', '1', $base));
+            exit;
         }
+        // btcpay_url is missing — should not normally happen
+        if ($btcpayUrl === '') {
+            wp_safe_redirect(add_query_arg('btcpay_connect_error', 'nourl', $base));
+            exit;
+        }
+
         update_option('btcpay_satoshi_url', rtrim(esc_url_raw($btcpayUrl), '/'));
         update_option('btcpay_satoshi_api_key', $apiKey);
         update_option('btcpay_satoshi_connected_via_satflux', '0');
 
-        $base = self::getTabUrl(self::SECTION_CONNECTION);
         if ($storeId !== '') {
             update_option('btcpay_satoshi_store_id', $storeId);
             WebhookHandler::registerWebhook();
