@@ -370,6 +370,9 @@ final class SatoshiApiClient
             $qty = $data['quantity'];
             $out['quantity'] = $qty === null || $qty === '' ? 999999 : (int) $qty;
         }
+        if (array_key_exists('isDefault', $data)) {
+            $out['isDefault'] = (bool) $data['isDefault'];
+        }
         return $out;
     }
 
@@ -410,5 +413,120 @@ final class SatoshiApiClient
             $body['orderTotal'] = $orderTotal;
         }
         return $this->request('POST', '/events/' . rawurlencode($eventId) . '/purchase', $body);
+    }
+
+    /**
+     * Get tickets for an event (settled only).
+     *
+     * @return array{success: bool, data?: array, message?: string}
+     */
+    public function getTickets(string $eventId, string $searchText = ''): array
+    {
+        $args = $searchText !== '' ? ['searchText' => $searchText] : [];
+        return $this->request('GET', '/events/' . rawurlencode($eventId) . '/tickets', $args);
+    }
+
+    /**
+     * Get orders for an event.
+     *
+     * @return array{success: bool, data?: array, message?: string}
+     */
+    public function getOrders(string $eventId, string $searchText = ''): array
+    {
+        $args = $searchText !== '' ? ['searchText' => $searchText] : [];
+        return $this->request('GET', '/events/' . rawurlencode($eventId) . '/orders', $args);
+    }
+
+    /**
+     * Check in a ticket by ticket number or transaction number.
+     *
+     * @return array{success: bool, data?: array, message?: string}
+     */
+    public function checkInTicket(string $eventId, string $ticketNumber): array
+    {
+        return $this->request('POST', '/events/' . rawurlencode($eventId) . '/tickets/' . rawurlencode($ticketNumber) . '/check-in', []);
+    }
+
+    /**
+     * Send reminder email for a specific ticket.
+     *
+     * @return array{success: bool, data?: mixed, message?: string}
+     */
+    public function sendReminderEmail(string $eventId, string $orderId, string $ticketId): array
+    {
+        return $this->request(
+            'POST',
+            '/events/' . rawurlencode($eventId) . '/orders/' . rawurlencode($orderId) . '/tickets/' . rawurlencode($ticketId) . '/send-reminder',
+            []
+        );
+    }
+
+    /**
+     * Export tickets as CSV. Returns raw CSV string on success.
+     *
+     * @return array{success: bool, csv?: string, message?: string}
+     */
+    public function exportTicketsCsv(string $eventId): array
+    {
+        $url = $this->getBaseUrl() . '/events/' . rawurlencode($eventId) . '/tickets/export';
+        $response = wp_remote_get($url, [
+            'headers' => ['Authorization' => 'token ' . $this->apiKey],
+            'timeout' => 30,
+        ]);
+        if (is_wp_error($response)) {
+            return ['success' => false, 'message' => $response->get_error_message()];
+        }
+        $code = wp_remote_retrieve_response_code($response);
+        if ($code >= 200 && $code < 300) {
+            return ['success' => true, 'csv' => wp_remote_retrieve_body($response)];
+        }
+        return ['success' => false, 'message' => 'HTTP ' . $code];
+    }
+
+    /**
+     * Upload event logo image (multipart/form-data).
+     *
+     * @return array{success: bool, data?: array, message?: string}
+     */
+    public function uploadEventLogo(string $eventId, string $filePath, string $fileName, string $mimeType): array
+    {
+        $url = $this->getBaseUrl() . '/events/' . rawurlencode($eventId) . '/logo';
+        $boundary = wp_generate_password(24, false);
+        $fileContents = file_get_contents($filePath); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+        if ($fileContents === false) {
+            return ['success' => false, 'message' => 'Could not read file.'];
+        }
+        $body = "--{$boundary}\r\n"
+            . 'Content-Disposition: form-data; name="file"; filename="' . $fileName . '"' . "\r\n"
+            . 'Content-Type: ' . $mimeType . "\r\n\r\n"
+            . $fileContents . "\r\n"
+            . "--{$boundary}--\r\n";
+        $response = wp_remote_post($url, [
+            'headers' => [
+                'Authorization' => 'token ' . $this->apiKey,
+                'Content-Type'  => 'multipart/form-data; boundary=' . $boundary,
+            ],
+            'body'    => $body,
+            'timeout' => 30,
+        ]);
+        if (is_wp_error($response)) {
+            return ['success' => false, 'message' => $response->get_error_message()];
+        }
+        $code = wp_remote_retrieve_response_code($response);
+        $data = json_decode(wp_remote_retrieve_body($response), true);
+        if ($code >= 200 && $code < 300) {
+            return ['success' => true, 'data' => $data];
+        }
+        return ['success' => false, 'message' => is_array($data) && isset($data['message']) ? $data['message'] : 'HTTP ' . $code];
+    }
+
+    /**
+     * Remove event logo.
+     *
+     * @return array{success: bool, data?: mixed, message?: string}
+     */
+    public function deleteEventLogo(string $eventId): array
+    {
+        return $this->request('DELETE', '/events/' . rawurlencode($eventId) . '/logo');
     }
 }

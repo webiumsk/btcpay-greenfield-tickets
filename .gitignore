@@ -1,6 +1,7 @@
 .DS_Store
 Thumbs.db
 *.log
+*.zip
 .idea/
 .vscode/
 node_modules/

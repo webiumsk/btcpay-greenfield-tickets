@@ -143,7 +143,14 @@ final class WebhookHandler
         if (!$order || $order->is_paid()) {
             return new \WP_REST_Response(['received' => true], 200);
         }
-        $order->payment_complete();
+        $order->payment_complete($invoiceId);
+        $order->add_order_note(
+            sprintf(
+                /* translators: %s: BTCPay invoice ID */
+                __('Tickets fulfilled via BTCPay. Invoice ID: %s', 'btcpay-satoshi-tickets'),
+                $invoiceId
+            )
+        );
         return new \WP_REST_Response(['received' => true], 200);
     }
 }
