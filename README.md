@@ -75,6 +75,32 @@ The plugin uses the SatoshiTickets Greenfield API:
 - `GET /api/v1/stores/{storeId}/satoshi-tickets/events/{eventId}/ticket-types` – List ticket types
 - `POST /api/v1/stores/{storeId}/satoshi-tickets/events/{eventId}/purchase` – Create purchase (returns checkout URL)
 
+## Screenshots
+
+### Connection
+
+![Connection](docs/screenshots/connection.png)
+
+### Events & Tickets
+
+![Events and Tickets](docs/screenshots/events-and-tickets.png)
+
+### Event detail and ticket types
+
+![Event detail](docs/screenshots/event-detail.png)
+
+### Edit event
+
+![Edit event](docs/screenshots/edit-event.png)
+
+### Checkout (Blocks)
+
+![Checkout Blocks](docs/screenshots/checkout-blocks.png)
+
+### Checkout (Classic)
+
+![Checkout Classic](docs/screenshots/checkout-classic.png)
+
 ## License
 
 MIT
