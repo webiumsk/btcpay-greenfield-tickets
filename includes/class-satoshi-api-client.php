@@ -114,6 +114,23 @@ final class SatoshiApiClient
         }
 
         $message = is_array($data) && isset($data['message']) ? $data['message'] : $body;
+        if (is_array($data) && isset($data['validationErrors']) && is_array($data['validationErrors'])) {
+            $parts = [];
+            foreach ($data['validationErrors'] as $errors) {
+                if (is_array($errors)) {
+                    foreach ($errors as $err) {
+                        if (is_string($err) && $err !== '') {
+                            $parts[] = $err;
+                        }
+                    }
+                } elseif (is_string($errors) && $errors !== '') {
+                    $parts[] = $errors;
+                }
+            }
+            if ($parts !== []) {
+                $message = implode(' ', $parts);
+            }
+        }
         return [
             'success' => false,
             'code' => $code,
@@ -314,7 +331,11 @@ final class SatoshiApiClient
      */
     public function deleteTicketType(string $eventId, string $ticketTypeId): array
     {
-        return $this->request('DELETE', '/ticket-types/' . rawurlencode($ticketTypeId) . '?eventId=' . rawurlencode($eventId), []);
+        return $this->request(
+            'DELETE',
+            '/events/' . rawurlencode($eventId) . '/ticket-types/' . rawurlencode($ticketTypeId),
+            []
+        );
     }
 
     /**
@@ -324,7 +345,51 @@ final class SatoshiApiClient
      */
     public function toggleTicketType(string $eventId, string $ticketTypeId): array
     {
-        return $this->request('PUT', '/ticket-types/' . rawurlencode($ticketTypeId) . '/toggle?eventId=' . rawurlencode($eventId), []);
+        return $this->request(
+            'PUT',
+            '/events/' . rawurlencode($eventId) . '/ticket-types/' . rawurlencode($ticketTypeId) . '/toggle',
+            []
+        );
+    }
+
+    /**
+     * List open raffles for bundle configuration (BTCPay Raffle plugin).
+     *
+     * @return array{success: bool, data?: array<int, array>, message?: string}
+     */
+    public function getOpenRaffles(): array
+    {
+        $url = $this->url . '/api/v1/stores/' . $this->storeId . '/raffle';
+        $response = wp_remote_get($url, [
+            'headers' => [
+                'Authorization' => 'token ' . $this->apiKey,
+                'Content-Type' => 'application/json',
+            ],
+            'timeout' => 30,
+        ]);
+        if (is_wp_error($response)) {
+            return ['success' => false, 'message' => $response->get_error_message()];
+        }
+        $code = wp_remote_retrieve_response_code($response);
+        $body = wp_remote_retrieve_body($response);
+        $data = json_decode($body, true);
+        if ($code >= 200 && $code < 300) {
+            $list = is_array($data) ? $data : [];
+            $open = array_values(array_filter($list, static function ($r) {
+                if (!is_array($r)) {
+                    return false;
+                }
+                $status = $r['status'] ?? $r['Status'] ?? '';
+                return strcasecmp((string) $status, 'Open') === 0;
+            }));
+            return ['success' => true, 'data' => $open];
+        }
+        $message = is_array($data) && isset($data['message']) ? $data['message'] : $body;
+        return [
+            'success' => false,
+            'code' => $code,
+            'message' => is_string($message) ? $message : 'Unknown error',
+        ];
     }
 
     /**
@@ -333,7 +398,7 @@ final class SatoshiApiClient
      */
     private static function normalizeEventPayload(array $data): array
     {
-        $allowed = ['title', 'description', 'eventType', 'location', 'startDate', 'endDate', 'currency', 'redirectUrl', 'emailSubject', 'emailBody', 'hasMaximumCapacity', 'maximumEventCapacity', 'eventLogoFileId', 'enable'];
+        $allowed = ['title', 'description', 'eventType', 'location', 'startDate', 'endDate', 'currency', 'redirectUrl', 'emailSubject', 'emailBody', 'hasMaximumCapacity', 'maximumEventCapacity', 'eventLogoFileId', 'enable', 'bundledRaffleId', 'bundledRaffleTicketsPerAdmission'];
         $out = [];
         foreach ($allowed as $k) {
             if (array_key_exists($k, $data)) {
@@ -342,6 +407,16 @@ final class SatoshiApiClient
                     $out[$k] = (bool) $v;
                 } elseif ($k === 'maximumEventCapacity' && $v !== null && $v !== '') {
                     $out[$k] = (int) $v;
+                } elseif ($k === 'bundledRaffleTicketsPerAdmission') {
+                    $out[$k] = max(0, min(20, (int) $v));
+                } elseif ($k === 'bundledRaffleId') {
+                    if ($v === null || $v === '') {
+                        if (($data['bundledRaffleTicketsPerAdmission'] ?? 0) === 0) {
+                            $out[$k] = null;
+                        }
+                    } else {
+                        $out[$k] = (string) $v;
+                    }
                 } elseif ($v !== null && $v !== '') {
                     $out[$k] = $v;
                 }

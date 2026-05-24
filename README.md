@@ -7,13 +7,14 @@ WordPress plugin that integrates [SatoshiTickets](https://github.com/TChukwuleta
 - WordPress 5.8+
 - WooCommerce 6.0+ (tested up to 8.5)
 - PHP 8.0+
-- BTCPay Server with SatoshiTickets plugin installed and configured
+- BTCPay Server with **SatoshiTickets** plugin installed and configured
+- For raffle bundle on events: **Webium fork** Satoshi Tickets **≥ 1.3.6.6** and BTCPay Raffle **≥ 1.3.1.2** on the same BTCPay store
 - Optional: [BTCPay Greenfield for WooCommerce](https://wordpress.org/plugins/btcpay-greenfield-for-woocommerce/) – if installed, this plugin can use its connection (URL, API key, Store ID) or your own settings
 
 ## Features
 
 - **Standalone connection** – Configure BTCPay Server directly (URL, API key, Store ID) or override/use BTCPay Greenfield settings
-- **Admin:** Browse events and ticket types from BTCPay SatoshiTickets
+- **Admin:** Browse events and ticket types from BTCPay SatoshiTickets; create/edit events including optional **raffle bundle** (tombola tickets per admission)
 - **Products:** Create WooCommerce products for ticket types (one click from admin)
 - **Checkout:** Recipient details (name, email) per ticket; supports multiple tickets
 - **Payment:** “Bitcoin (Satoshi Tickets)” gateway – shown only when cart contains ticket products (from one event); redirect to BTCPay checkout; order completion via own webhook

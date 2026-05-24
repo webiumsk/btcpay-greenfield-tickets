@@ -22,6 +22,7 @@ final class AdminEvents
         add_action('wp_ajax_btcpay_satoshi_create_product', [__CLASS__, 'ajaxCreateProduct']);
         add_action('wp_ajax_btcpay_satoshi_sync_stock', [__CLASS__, 'ajaxSyncStock']);
         add_action('wp_ajax_btcpay_satoshi_sync_ticket_type_from_btcpay', [__CLASS__, 'ajaxSyncTicketTypeFromBtcpay']);
+        add_action('wp_ajax_btcpay_satoshi_get_open_raffles', [__CLASS__, 'ajaxGetOpenRaffles']);
         add_action('wp_ajax_btcpay_satoshi_create_event', [__CLASS__, 'ajaxCreateEvent']);
         add_action('wp_ajax_btcpay_satoshi_create_ticket_type', [__CLASS__, 'ajaxCreateTicketType']);
         add_action('wp_ajax_btcpay_satoshi_update_event', [__CLASS__, 'ajaxUpdateEvent']);
@@ -102,6 +103,21 @@ final class AdminEvents
                         <span class="description"><?php esc_html_e('Placeholders: {{Title}} {{Name}} {{Email}} {{Location}} {{Description}} {{EventDate}} {{Currency}}', 'btcpay-satoshi-tickets'); ?></span><br>
                         <textarea id="st-event-email-body" rows="5" class="large-text"></textarea>
                     </label></p>
+                    <hr style="margin:12px 0;" />
+                    <div id="st-event-raffle-bundle-section">
+                        <p><strong><?php esc_html_e('Raffle bundle (optional)', 'btcpay-satoshi-tickets'); ?></strong><br>
+                            <span class="description"><?php esc_html_e('Grant tombola tickets per admission when the event ticket is paid. Requires BTCPay Raffle plugin on the server.', 'btcpay-satoshi-tickets'); ?></span>
+                        </p>
+                        <p><label><?php esc_html_e('Raffle tickets per admission', 'btcpay-satoshi-tickets'); ?><br>
+                            <input type="number" id="st-event-bundle-per-admission" min="0" max="20" value="0" class="small-text" />
+                        </label></p>
+                        <p id="st-event-bundle-raffle-row" style="display:none;"><label><?php esc_html_e('Open raffle', 'btcpay-satoshi-tickets'); ?><br>
+                            <select id="st-event-bundle-raffle-id" class="regular-text">
+                                <option value=""><?php esc_html_e('Select raffle…', 'btcpay-satoshi-tickets'); ?></option>
+                            </select>
+                        </label></p>
+                        <p id="st-event-bundle-unavailable" class="description" style="display:none;color:#a00;"><?php esc_html_e('No open raffles found. Create an open raffle in BTCPay first, or set count to 0.', 'btcpay-satoshi-tickets'); ?></p>
+                    </div>
                     <hr style="margin:12px 0;" />
                     <p><label><input type="checkbox" id="st-event-has-capacity" /> <?php esc_html_e('Limit total capacity', 'btcpay-satoshi-tickets'); ?></label></p>
                     <p id="st-event-max-capacity-row" style="display:none;"><label><?php esc_html_e('Maximum capacity', 'btcpay-satoshi-tickets'); ?><br><input type="number" id="st-event-max-capacity" min="1" class="small-text" /></label></p>
@@ -391,6 +407,7 @@ final class AdminEvents
             'maximumEventCapacity'  => $maxCapacity,
             'enable'                => !empty($_POST['enable']),
         ];
+        $data = array_merge($data, self::eventBundleFieldsFromPost());
         if ($endDate !== '') {
             $data['endDate'] = $endDate;
         }
@@ -668,6 +685,40 @@ final class AdminEvents
         ]);
     }
 
+    /**
+     * @return array{bundledRaffleTicketsPerAdmission: int, bundledRaffleId: ?string}
+     */
+    private static function eventBundleFieldsFromPost(): array
+    {
+        $perAdmission = isset($_POST['bundledRaffleTicketsPerAdmission'])
+            ? max(0, min(20, (int) $_POST['bundledRaffleTicketsPerAdmission']))
+            : 0;
+        $raffleId = isset($_POST['bundledRaffleId']) ? sanitize_text_field(wp_unslash($_POST['bundledRaffleId'])) : '';
+        return [
+            'bundledRaffleTicketsPerAdmission' => $perAdmission,
+            'bundledRaffleId' => $perAdmission > 0 && $raffleId !== '' ? $raffleId : null,
+        ];
+    }
+
+    public static function ajaxGetOpenRaffles(): void
+    {
+        if (!check_ajax_referer('btcpay_satoshi_admin', 'nonce', false)) {
+            wp_send_json_error(['message' => 'Security check failed.']);
+        }
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+        $client = new SatoshiApiClient();
+        if (!$client->isConfigured()) {
+            wp_send_json_error(['message' => 'BTCPay not configured']);
+        }
+        $result = $client->getOpenRaffles();
+        if (!$result['success']) {
+            wp_send_json_error(['message' => $result['message'] ?? 'Could not load raffles. Is BTCPay Raffle installed?']);
+        }
+        wp_send_json_success($result['data'] ?? []);
+    }
+
     public static function ajaxCreateEvent(): void
     {
         if (!check_ajax_referer('btcpay_satoshi_admin', 'nonce', false)) {
@@ -698,6 +749,7 @@ final class AdminEvents
             'maximumEventCapacity'  => $maxCapacity,
             'enable'                => !empty($_POST['enable']),
         ];
+        $data = array_merge($data, self::eventBundleFieldsFromPost());
         if ($endDate !== '') {
             $data['endDate'] = $endDate;
         }
