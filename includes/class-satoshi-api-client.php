@@ -411,7 +411,7 @@ final class SatoshiApiClient
                     $out[$k] = max(0, min(20, (int) $v));
                 } elseif ($k === 'bundledRaffleId') {
                     if ($v === null || $v === '') {
-                        if (($data['bundledRaffleTicketsPerAdmission'] ?? 0) === 0) {
+                        if ((int) ($data['bundledRaffleTicketsPerAdmission'] ?? 0) === 0) {
                             $out[$k] = null;
                         }
                     } else {
