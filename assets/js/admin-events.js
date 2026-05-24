@@ -5,6 +5,8 @@
     var currentEventTitle = '';
     var currentTicketsEventId = '';
     var currentOrdersEventId = '';
+    var openRafflesCache = null;
+    var openRafflesLoading = false;
 
     var s = btcpaySatoshiAdmin.strings;
 
@@ -305,6 +307,81 @@
     });
 
     /* -----------------------------------------------------------------------
+     * Raffle bundle (event-level, Webium Satoshi Tickets fork)
+     * --------------------------------------------------------------------- */
+
+    function populateRaffleSelect(selectedId) {
+        var $select = $('#st-event-bundle-raffle-id');
+        $select.find('option:not(:first)').remove();
+        var list = openRafflesCache || [];
+        list.forEach(function (r) {
+            var id = r.id || r.Id || '';
+            var title = r.title || r.Title || r.name || r.Name || id;
+            $select.append($('<option></option>').val(id).text(title));
+        });
+        if (selectedId) {
+            $select.val(selectedId);
+        }
+    }
+
+    function updateBundleRaffleVisibility() {
+        var count = parseInt($('#st-event-bundle-per-admission').val(), 10) || 0;
+        var show = count > 0;
+        $('#st-event-bundle-raffle-row').toggle(show);
+        if (!show) {
+            $('#st-event-bundle-raffle-id').val('');
+            $('#st-event-bundle-unavailable').hide();
+            return;
+        }
+        var hasRaffles = openRafflesCache && openRafflesCache.length > 0;
+        $('#st-event-bundle-unavailable').toggle(!hasRaffles);
+    }
+
+    function loadOpenRaffles(callback) {
+        if (openRafflesCache !== null) {
+            if (callback) callback(openRafflesCache);
+            return;
+        }
+        if (openRafflesLoading) {
+            setTimeout(function () { loadOpenRaffles(callback); }, 200);
+            return;
+        }
+        openRafflesLoading = true;
+        $.post(btcpaySatoshiAdmin.ajaxUrl, {
+            action: 'btcpay_satoshi_get_open_raffles',
+            nonce: btcpaySatoshiAdmin.nonce
+        }).done(function (r) {
+            openRafflesCache = (r.success && r.data) ? r.data : [];
+        }).fail(function () {
+            openRafflesCache = [];
+        }).always(function () {
+            openRafflesLoading = false;
+            if (callback) callback(openRafflesCache);
+        });
+    }
+
+    function resetBundleFields() {
+        $('#st-event-bundle-per-admission').val('0');
+        $('#st-event-bundle-raffle-id').val('');
+        $('#st-event-bundle-raffle-row').hide();
+        $('#st-event-bundle-unavailable').hide();
+    }
+
+    function setBundleFieldsFromEvent(e) {
+        var perAdmission = e.bundledRaffleTicketsPerAdmission !== undefined
+            ? e.bundledRaffleTicketsPerAdmission
+            : (e.BundledRaffleTicketsPerAdmission || 0);
+        var raffleId = e.bundledRaffleId || e.BundledRaffleId || '';
+        $('#st-event-bundle-per-admission').val(perAdmission);
+        loadOpenRaffles(function () {
+            populateRaffleSelect(raffleId);
+            updateBundleRaffleVisibility();
+        });
+    }
+
+    $(document).on('change input', '#st-event-bundle-per-admission', updateBundleRaffleVisibility);
+
+    /* -----------------------------------------------------------------------
      * Event form
      * --------------------------------------------------------------------- */
 
@@ -315,6 +392,7 @@
         $('#btcpay-satoshi-submit-event').text(s.createEvent || 'Create event');
         $('#st-event-logo-current').empty();
         $('#btcpay-satoshi-remove-logo').hide();
+        resetBundleFields();
     }
 
     $(document).on('click', '#btcpay-satoshi-add-event', function () {
@@ -326,6 +404,10 @@
         $('#st-event-enable,#st-event-has-capacity').prop('checked', false);
         $('#st-event-max-capacity-row').hide();
         $('#st-event-logo-file').val('');
+        loadOpenRaffles(function () {
+            populateRaffleSelect('');
+            updateBundleRaffleVisibility();
+        });
         $('#btcpay-satoshi-add-event-form').slideToggle();
     });
 
@@ -369,6 +451,7 @@
                 $('#st-event-max-capacity-row').toggle(hasCap);
                 $('#st-event-max-capacity').val(e.maximumEventCapacity || e.MaximumEventCapacity || '');
                 $('#st-event-enable').prop('checked', !!(e.enable !== undefined ? e.enable : (e.eventState || e.EventState) === 'Active'));
+                setBundleFieldsFromEvent(e);
 
                 // Show current logo if any
                 var logoUrl = e.eventLogoUrl || e.EventLogoUrl || '';
@@ -404,6 +487,14 @@
             return val;
         }
 
+        var bundleCount = parseInt($('#st-event-bundle-per-admission').val(), 10) || 0;
+        var bundleRaffleId = $('#st-event-bundle-raffle-id').val() || '';
+        if (bundleCount > 0 && !bundleRaffleId) {
+            alert('Select an open raffle or set raffle tickets per admission to 0.');
+            $btn.prop('disabled', false);
+            return;
+        }
+
         var payload = {
             action: isEdit ? 'btcpay_satoshi_update_event' : 'btcpay_satoshi_create_event',
             nonce: btcpaySatoshiAdmin.nonce,
@@ -419,7 +510,9 @@
             emailBody: $('#st-event-email-body').val(),
             hasMaximumCapacity: $('#st-event-has-capacity').is(':checked') ? 1 : 0,
             maximumEventCapacity: $('#st-event-max-capacity').val(),
-            enable: $('#st-event-enable').is(':checked') ? 1 : 0
+            enable: $('#st-event-enable').is(':checked') ? 1 : 0,
+            bundledRaffleTicketsPerAdmission: bundleCount,
+            bundledRaffleId: bundleRaffleId
         };
         if (isEdit) payload.eventId = editId;
 
